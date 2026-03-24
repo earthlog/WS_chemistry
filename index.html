@@ -1,455 +1,430 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>주기율표 짝맞추기 - 우신고</title>
-  <!-- Tailwind CSS 로드 -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* MZ 감성 반짝이 애니메이션 */
-    @keyframes twinkle {
-      0%, 100% { opacity: 0; transform: scale(0.5); }
-      50% { opacity: 0.8; transform: scale(1.2); }
-    }
+import React, { useState, useEffect } from 'react';
+import { Trophy, Play, RotateCcw, Medal, Zap } from 'lucide-react';
+
+// ==========================================
+// [설정] 구글 앱스 스크립트 웹앱 URL
+// (가이드 문서를 보고 구글 시트 URL을 발급받아 아래 빈칸에 넣으세요!)
+// 예: "https://script.google.com/macros/s/ABCD.../exec"
+// ==========================================
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyrRdXvy_TqnH_BwK2huWi6bBTtJPL3GQ20WylWMRzuhbQJpejMI7AmCsX3DwMo6k7L/exec"; 
+
+const ELEMENTS_1_TO_20 = [
+  { id: 1, symbol: 'H', name: '수소', isBonus: false },
+  { id: 2, symbol: 'He', name: '헬륨', isBonus: false },
+  { id: 3, symbol: 'Li', name: '리튬', isBonus: false },
+  { id: 4, symbol: 'Be', name: '베릴륨', isBonus: false },
+  { id: 5, symbol: 'B', name: '붕소', isBonus: false },
+  { id: 6, symbol: 'C', name: '탄소', isBonus: false },
+  { id: 7, symbol: 'N', name: '질소', isBonus: false },
+  { id: 8, symbol: 'O', name: '산소', isBonus: false },
+  { id: 9, symbol: 'F', name: '플루오린', isBonus: false },
+  { id: 10, symbol: 'Ne', name: '네온', isBonus: false },
+  { id: 11, symbol: 'Na', name: '나트륨', isBonus: false },
+  { id: 12, symbol: 'Mg', name: '마그네슘', isBonus: false },
+  { id: 13, symbol: 'Al', name: '알루미늄', isBonus: false },
+  { id: 14, symbol: 'Si', name: '규소', isBonus: false },
+  { id: 15, symbol: 'P', name: '인', isBonus: false },
+  { id: 16, symbol: 'S', name: '황', isBonus: false },
+  { id: 17, symbol: 'Cl', name: '염소', isBonus: false },
+  { id: 18, symbol: 'Ar', name: '아르곤', isBonus: false },
+  { id: 19, symbol: 'K', name: '칼륨', isBonus: false },
+  { id: 20, symbol: 'Ca', name: '칼슘', isBonus: false },
+];
+
+const BONUS_ELEMENTS = [
+  { id: 26, symbol: 'Fe', name: '철', isBonus: true },
+  { id: 29, symbol: 'Cu', name: '구리', isBonus: true },
+  { id: 47, symbol: 'Ag', name: '은', isBonus: true },
+  { id: 79, symbol: 'Au', name: '금', isBonus: true },
+  { id: 30, symbol: 'Zn', name: '아연', isBonus: true },
+  { id: 82, symbol: 'Pb', name: '납', isBonus: true },
+];
+
+// --- 추가된 반짝이 효과 컴포넌트 ---
+const Sparkles = () => {
+  const [stars, setStars] = useState([]);
+  
+  useEffect(() => {
+    // 40개의 랜덤한 위치와 타이밍을 가진 반짝이 생성
+    const generatedStars = Array.from({ length: 40 }).map((_, i) => ({
+      id: i,
+      left: Math.random() * 100 + '%',
+      top: Math.random() * 100 + '%',
+      size: Math.random() * 3 + 2 + 'px',
+      animationDuration: Math.random() * 3 + 2 + 's',
+      animationDelay: Math.random() * 2 + 's',
+    }));
+    setStars(generatedStars);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+      <style>{`
+        @keyframes twinkle {
+          0%, 100% { opacity: 0; transform: scale(0.5); }
+          50% { opacity: 0.8; transform: scale(1.2); }
+        }
+      `}</style>
+      {stars.map((star) => (
+        <div
+          key={star.id}
+          className="absolute bg-white rounded-full"
+          style={{
+            left: star.left,
+            top: star.top,
+            width: star.size,
+            height: star.size,
+            opacity: 0,
+            boxShadow: '0 0 8px 2px rgba(255, 255, 255, 0.4)',
+            animation: `twinkle ${star.animationDuration} infinite ${star.animationDelay}`
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+export default function App() {
+  const [gameState, setGameState] = useState('menu'); // menu, playing, gameover, leaderboard
+  const [cards, setCards] = useState([]);
+  const [flippedIndices, setFlippedIndices] = useState([]);
+  const [matchedPairs, setMatchedPairs] = useState(0);
+  const [score, setScore] = useState(0);
+  const [time, setTime] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [playerName, setPlayerName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  // 게임 초기화
+  const initGame = () => {
+    // 1~20 원소 중 랜덤 6개, 보너스 원소 중 랜덤 2개 선택 (총 8쌍 = 16장 카드)
+    const shuffledBasic = [...ELEMENTS_1_TO_20].sort(() => 0.5 - Math.random()).slice(0, 6);
+    const shuffledBonus = [...BONUS_ELEMENTS].sort(() => 0.5 - Math.random()).slice(0, 2);
     
-    /* 3D 카드 뒤집기 효과용 CSS */
-    .perspective-1000 { perspective: 1000px; }
-    .preserve-3d { transform-style: preserve-3d; }
-    .backface-hidden { backface-visibility: hidden; }
-    .rotate-y-180 { transform: rotateY(180deg); }
-    
-    /* 카드 전환 애니메이션 부드럽게 */
-    .card-inner { transition: transform 0.5s; }
-  </style>
-</head>
-<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white font-sans min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-2 sm:p-4">
+    const selectedElements = [...shuffledBasic, ...shuffledBonus];
+    let newCards = [];
 
-  <!-- 반짝이 배경 (JS에서 동적 생성) -->
-  <div id="sparkles-container" class="fixed inset-0 pointer-events-none z-0"></div>
+    selectedElements.forEach(el => {
+      // isFlipped를 기본적으로 true로 설정하여 처음에 앞면을 보여줍니다.
+      newCards.push({ ...el, content: el.symbol, type: 'symbol', isFlipped: true, isMatched: false });
+      newCards.push({ ...el, content: el.name, type: 'name', isFlipped: true, isMatched: false });
+    });
 
-  <div class="z-10 w-full max-w-2xl flex flex-col items-center justify-center">
+    newCards = newCards.sort(() => 0.5 - Math.random());
+    setCards(newCards);
+    setFlippedIndices([]);
+    setMatchedPairs(0);
+    setScore(0);
+    setTime(0);
+    setGameState('playing');
+    setIsPreviewing(true);
 
-    <!-- ================= 메인 메뉴 화면 ================= -->
-    <div id="screen-menu" class="max-w-md w-full backdrop-blur-xl bg-white/10 p-6 sm:p-8 rounded-3xl shadow-[0_0_40px_rgba(120,0,255,0.3)] border border-white/20 text-center transform transition-all block">
-      <div class="inline-block px-3 py-1 mb-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-xs font-black tracking-widest uppercase shadow-lg shadow-pink-500/30 transform -rotate-2">
-        New Trend
-      </div>
-      <h1 class="text-4xl sm:text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 drop-shadow-lg leading-tight mt-2">
-        주기율표<br/>짝맞추기
-      </h1>
-      <div class="mb-8 flex flex-col items-center gap-3">
-        <p class="text-white font-bold text-base sm:text-lg bg-black/30 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl">
-          ✨ 우신고 주기율표 King은? ✨
-        </p>
-        <p class="text-white/60 text-xs font-medium tracking-wide bg-black/20 px-3 py-1 rounded-full">
-          🛠️ 오류제보: 이상준선생님
-        </p>
-      </div>
-      
-      <div class="space-y-4">
-        <button onclick="initGame()" class="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.5)] flex items-center justify-center gap-2">
-          ▶️ 게임 시작!
-        </button>
-        <button onclick="fetchLeaderboard()" class="w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-lg transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2">
-          🏆 명예의 전당
-        </button>
-      </div>
-    </div>
+    // 3초 후 모든 카드 덮기
+    setTimeout(() => {
+      setCards(prevCards => prevCards.map(c => ({ ...c, isFlipped: false })));
+      setIsPreviewing(false); 
+    }, 3000);
+  };
 
-    <!-- ================= 게임 진행 화면 ================= -->
-    <div id="screen-playing" class="w-full hidden">
-      <!-- 상단 상태창 -->
-      <div class="flex justify-between items-center mb-4 sm:mb-6 backdrop-blur-xl bg-white/10 p-3 sm:p-4 rounded-2xl border border-white/20 shadow-xl">
-        <div id="preview-message" class="w-full text-center text-pink-400 font-black text-lg sm:text-xl animate-pulse hidden">
-          👀 카드의 위치를 기억하세요! (3초)
-        </div>
-        
-        <div id="status-bar" class="flex w-full justify-between items-center">
-          <div class="flex gap-4 sm:gap-6">
-            <div class="flex flex-col bg-black/20 px-4 py-1.5 rounded-xl border border-white/5">
-              <span class="text-[10px] sm:text-xs text-cyan-300 font-bold uppercase tracking-wider">Score</span>
-              <span id="score-display" class="text-xl sm:text-2xl font-black text-white drop-shadow-md">0점</span>
-            </div>
-            <div class="flex flex-col bg-black/20 px-4 py-1.5 rounded-xl border border-white/5">
-              <span class="text-[10px] sm:text-xs text-pink-300 font-bold uppercase tracking-wider">Time</span>
-              <span id="time-display" class="text-xl sm:text-2xl font-black text-white drop-shadow-md">0초</span>
-            </div>
-          </div>
-          <button onclick="showScreen('menu')" class="px-4 py-2 bg-pink-500/20 hover:bg-pink-500/40 text-pink-200 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 border border-pink-500/30 transition-all active:scale-95">
-            포기하기 😢
-          </button>
-        </div>
-      </div>
-
-      <!-- 카드 그리드 -->
-      <div id="card-grid" class="grid grid-cols-4 gap-2 sm:gap-3">
-        <!-- 카드가 JS로 이곳에 주입됩니다 -->
-      </div>
-    </div>
-
-    <!-- ================= 게임 종료 화면 ================= -->
-    <div id="screen-gameover" class="max-w-md w-full backdrop-blur-xl bg-white/10 p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center border border-white/20 transform transition-all hidden">
-      <div class="text-7xl mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]">🏅</div>
-      <h2 class="text-4xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Game Clear!</h2>
-      <p class="text-white/70 mb-6 font-medium">모든 원소를 완벽하게 맞췄어요! 🎉</p>
-      
-      <div class="bg-black/30 p-6 rounded-2xl mb-6 border border-white/10 shadow-inner">
-        <div class="text-sm text-cyan-300 font-bold mb-1">최종 스코어</div>
-        <div class="text-6xl font-black text-white mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]"><span id="final-score">0</span><span class="text-2xl text-emerald-400 ml-1">pt</span></div>
-        <div class="inline-block bg-white/10 px-3 py-1 rounded-full text-sm text-white/80 font-medium">걸린 시간: <span id="final-time">0</span>초</div>
-      </div>
-
-      <div class="space-y-4">
-        <input type="text" id="player-name" placeholder="😎 닉네임을 입력하세요" maxlength="10" class="w-full p-4 bg-black/40 border border-white/20 rounded-2xl text-center text-lg font-bold text-white placeholder-white/40 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all" />
-        <button id="btn-submit" onclick="submitScore()" class="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:from-slate-600 disabled:to-slate-700 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2">
-          🚀 랭킹에 점수 등록하기
-        </button>
-        <button onclick="showScreen('menu')" class="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-bold transition-all active:scale-95 border border-white/10 text-white/80">
-          메인으로 돌아가기
-        </button>
-      </div>
-    </div>
-
-    <!-- ================= 리더보드 (랭킹) 화면 ================= -->
-    <div id="screen-leaderboard" class="max-w-md w-full backdrop-blur-xl bg-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(250,204,21,0.2)] border border-white/20 transform transition-all hidden">
-      <div class="flex items-center justify-center gap-3 mb-8">
-        <div class="text-4xl drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">🏆</div>
-        <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-500">명예의 전당</h2>
-      </div>
-
-      <div class="bg-black/30 rounded-2xl overflow-hidden mb-8 min-h-[300px] border border-white/10 shadow-inner">
-        <div id="leaderboard-empty" class="flex flex-col items-center justify-center h-[300px] text-white/50 p-8 text-center gap-2">
-          <div class="text-4xl mb-2">🤔</div>
-          <p class="font-bold text-white/70">아직 기록이 없어요.</p>
-          <p class="text-sm">우신고 1등의 주인공이 되어보세요!</p>
-        </div>
-        
-        <ul id="leaderboard-list" class="divide-y divide-white/5 hidden">
-          <!-- 랭킹 리스트가 JS로 이곳에 주입됩니다 -->
-        </ul>
-        
-        <!-- 알림 문구 -->
-        <div id="local-warning" class="p-3 bg-pink-500/20 text-pink-200 text-xs text-center border-t border-pink-500/30 font-medium hidden">
-          ⚠️ 현재 임시(로컬) 랭킹 모드입니다.
-        </div>
-      </div>
-
-      <button onclick="showScreen('menu')" class="w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-lg transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2">
-        🔄 메인으로
-      </button>
-    </div>
-
-  </div>
-
-  <script>
-    // ==========================================
-    // [설정] 구글 앱스 스크립트 웹앱 URL
-    // (구글 시트 연동 시 아래 빈칸에 URL을 넣으세요!)
-    // ==========================================
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw3MhtRp2Z0PDK3aT1WPmEfUUBBpM8fqpJc9aCfdEuBSeV5SMztBx8nhsC7GzCmJFgS/exec"; 
-
-    // 원소 데이터
-    const ELEMENTS_1_TO_20 = [
-      { id: 1, symbol: 'H', name: '수소', isBonus: false }, { id: 2, symbol: 'He', name: '헬륨', isBonus: false },
-      { id: 3, symbol: 'Li', name: '리튬', isBonus: false }, { id: 4, symbol: 'Be', name: '베릴륨', isBonus: false },
-      { id: 5, symbol: 'B', name: '붕소', isBonus: false }, { id: 6, symbol: 'C', name: '탄소', isBonus: false },
-      { id: 7, symbol: 'N', name: '질소', isBonus: false }, { id: 8, symbol: 'O', name: '산소', isBonus: false },
-      { id: 9, symbol: 'F', name: '플루오린', isBonus: false }, { id: 10, symbol: 'Ne', name: '네온', isBonus: false },
-      { id: 11, symbol: 'Na', name: '나트륨', isBonus: false }, { id: 12, symbol: 'Mg', name: '마그네슘', isBonus: false },
-      { id: 13, symbol: 'Al', name: '알루미늄', isBonus: false }, { id: 14, symbol: 'Si', name: '규소', isBonus: false },
-      { id: 15, symbol: 'P', name: '인', isBonus: false }, { id: 16, symbol: 'S', name: '황', isBonus: false },
-      { id: 17, symbol: 'Cl', name: '염소', isBonus: false }, { id: 18, symbol: 'Ar', name: '아르곤', isBonus: false },
-      { id: 19, symbol: 'K', name: '칼륨', isBonus: false }, { id: 20, symbol: 'Ca', name: '칼슘', isBonus: false }
-    ];
-
-    const BONUS_ELEMENTS = [
-      { id: 26, symbol: 'Fe', name: '철', isBonus: true }, { id: 29, symbol: 'Cu', name: '구리', isBonus: true },
-      { id: 47, symbol: 'Ag', name: '은', isBonus: true }, { id: 79, symbol: 'Au', name: '금', isBonus: true },
-      { id: 30, symbol: 'Zn', name: '아연', isBonus: true }, { id: 82, symbol: 'Pb', name: '납', isBonus: true }
-    ];
-
-    // 게임 상태 변수
-    let cards = [];
-    let flippedIndices = [];
-    let matchedPairs = 0;
-    let score = 0;
-    let time = 0;
-    let isPreviewing = false;
-    let timerInterval = null;
-
-    // 배경 반짝이 생성 함수
-    function createSparkles() {
-      const container = document.getElementById('sparkles-container');
-      for (let i = 0; i < 40; i++) {
-        const star = document.createElement('div');
-        const size = Math.random() * 3 + 2;
-        star.className = 'absolute bg-white rounded-full';
-        star.style.left = Math.random() * 100 + '%';
-        star.style.top = Math.random() * 100 + '%';
-        star.style.width = size + 'px';
-        star.style.height = size + 'px';
-        star.style.opacity = '0';
-        star.style.boxShadow = '0 0 8px 2px rgba(255, 255, 255, 0.4)';
-        star.style.animation = `twinkle ${Math.random() * 3 + 2}s infinite ${Math.random() * 2}s`;
-        container.appendChild(star);
-      }
+  // 타이머
+  useEffect(() => {
+    let timer;
+    if (gameState === 'playing' && !isPreviewing) { 
+      timer = setInterval(() => setTime(t => t + 1), 1000);
     }
+    return () => clearInterval(timer);
+  }, [gameState, isPreviewing]);
 
-    // 화면 전환 함수
-    function showScreen(screenId) {
-      ['menu', 'playing', 'gameover', 'leaderboard'].forEach(id => {
-        document.getElementById('screen-' + id).classList.add('hidden');
-      });
-      document.getElementById('screen-' + screenId).classList.remove('hidden');
-      if (screenId !== 'playing') stopTimer();
-    }
+  // 카드 클릭 처리
+  const handleCardClick = (index) => {
+    if (isPreviewing) return; 
+    if (flippedIndices.length === 2) return; 
+    if (cards[index].isFlipped || cards[index].isMatched) return; 
 
-    // 게임 초기화
-    function initGame() {
-      // 데이터 섞기
-      const shuffledBasic = [...ELEMENTS_1_TO_20].sort(() => 0.5 - Math.random()).slice(0, 8);
-      const shuffledBonus = [...BONUS_ELEMENTS].sort(() => 0.5 - Math.random()).slice(0, 2);
-      
-      const selectedElements = [...shuffledBasic, ...shuffledBonus];
-      cards = [];
+    const newCards = [...cards];
+    newCards[index].isFlipped = true;
+    setCards(newCards);
 
-      selectedElements.forEach(el => {
-        cards.push({ ...el, content: el.symbol, type: 'symbol', isFlipped: true, isMatched: false });
-        cards.push({ ...el, content: el.name, type: 'name', isFlipped: true, isMatched: false });
-      });
+    const newFlippedIndices = [...flippedIndices, index];
+    setFlippedIndices(newFlippedIndices);
 
-      cards.sort(() => 0.5 - Math.random());
-      flippedIndices = [];
-      matchedPairs = 0;
-      score = 0;
-      time = 0;
-      updateUI();
-      
-      showScreen('playing');
-      renderCards();
+    // 2장을 뒤집었을 때 짝 맞추기 검사
+    if (newFlippedIndices.length === 2) {
+      const card1 = newCards[newFlippedIndices[0]];
+      const card2 = newCards[newFlippedIndices[1]];
 
-      // 3초 미리보기
-      isPreviewing = true;
-      document.getElementById('preview-message').classList.remove('hidden');
-      document.getElementById('status-bar').classList.add('hidden');
-      
-      setTimeout(() => {
-        cards.forEach(c => c.isFlipped = false);
-        isPreviewing = false;
-        document.getElementById('preview-message').classList.add('hidden');
-        document.getElementById('status-bar').classList.remove('hidden');
-        renderCards();
-        startTimer();
-      }, 3000);
-    }
-
-    // 카드 화면 렌더링
-    function renderCards() {
-      const grid = document.getElementById('card-grid');
-      grid.innerHTML = '';
-
-      cards.forEach((card, idx) => {
-        const isFaceUp = card.isFlipped || card.isMatched;
-        
-        // 앞면 색상 결정
-        let frontColors = '';
-        if (card.isMatched) {
-          frontColors = 'opacity-40 scale-95 border-emerald-500/30 bg-emerald-900/20';
-        } else if (card.isBonus) {
-          frontColors = 'bg-gradient-to-br from-amber-400 to-pink-500 border-yellow-300 shadow-[0_0_15px_rgba(251,191,36,0.5)]';
-        } else {
-          frontColors = 'bg-gradient-to-br from-cyan-500 to-blue-600 border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]';
-        }
-
-        const textSize = card.type === 'symbol' ? 'text-3xl sm:text-4xl md:text-5xl' : 'text-sm sm:text-lg md:text-xl';
-        const zapIcon = (card.isBonus && !card.isMatched) ? `<span class="absolute top-1 right-1 sm:top-2 sm:right-2 text-yellow-100 text-xs sm:text-sm drop-shadow-md animate-pulse">⚡</span>` : '';
-
-        const cardHTML = `
-          <div onclick="handleCardClick(${idx})" class="relative w-full aspect-[3/4] cursor-pointer group perspective-1000">
-            <div class="card-inner w-full h-full preserve-3d ${isFaceUp ? 'rotate-y-180' : ''}">
-              <!-- 뒷면 -->
-              <div class="absolute inset-0 backface-hidden backdrop-blur-md bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center group-hover:border-cyan-400 transition-all shadow-lg overflow-hidden">
-                <span class="text-3xl sm:text-5xl text-white/30 font-black drop-shadow-md">?</span>
-              </div>
-              <!-- 앞면 -->
-              <div class="absolute inset-0 backface-hidden rotate-y-180 rounded-2xl flex flex-col items-center justify-center border-2 shadow-2xl transition-all ${frontColors}">
-                ${zapIcon}
-                <span class="font-black text-center px-1 break-keep text-white drop-shadow-md ${textSize}">${card.content}</span>
-              </div>
-            </div>
-          </div>
-        `;
-        grid.insertAdjacentHTML('beforeend', cardHTML);
-      });
-    }
-
-    // 카드 클릭 처리
-    function handleCardClick(index) {
-      if (isPreviewing || flippedIndices.length === 2 || cards[index].isFlipped || cards[index].isMatched) return;
-
-      cards[index].isFlipped = true;
-      flippedIndices.push(index);
-      renderCards();
-
-      if (flippedIndices.length === 2) {
-        const card1 = cards[flippedIndices[0]];
-        const card2 = cards[flippedIndices[1]];
-
-        if (card1.id === card2.id) {
-          // 정답
-          setTimeout(() => {
-            card1.isMatched = true;
-            card2.isMatched = true;
-            flippedIndices = [];
-            matchedPairs++;
-            score += card1.isBonus ? 30 : 10;
-            updateUI();
-            renderCards();
-            checkGameOver();
-          }, 500);
-        } else {
-          // 오답
-          setTimeout(() => {
-            card1.isFlipped = false;
-            card2.isFlipped = false;
-            flippedIndices = [];
-            score = Math.max(0, score - 2);
-            updateUI();
-            renderCards();
-          }, 800);
-        }
-      }
-    }
-
-    // 타이머 및 점수 UI 업데이트
-    function updateUI() {
-      document.getElementById('score-display').innerText = score + '점';
-      document.getElementById('time-display').innerText = time + '초';
-    }
-
-    // 타이머 시작
-    function startTimer() {
-      if (timerInterval) clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        time++;
-        updateUI();
-      }, 1000);
-    }
-
-    // 타이머 종료
-    function stopTimer() {
-      if (timerInterval) clearInterval(timerInterval);
-    }
-
-    // 게임 종료 체크
-    function checkGameOver() {
-      if (matchedPairs === 10) {
-        stopTimer();
-        const timeBonus = Math.max(0, 100 - time);
-        score += timeBonus;
-        
-        document.getElementById('final-score').innerText = score;
-        document.getElementById('final-time').innerText = time;
-        document.getElementById('player-name').value = '';
-        document.getElementById('btn-submit').innerText = '🚀 랭킹에 점수 등록하기';
-        document.getElementById('btn-submit').disabled = false;
-        
-        showScreen('gameover');
-      }
-    }
-
-    // 점수 등록 (구글 시트 or 로컬)
-    async function submitScore() {
-      const playerName = document.getElementById('player-name').value.trim();
-      if (!playerName) return alert("이름을 입력해주세요!");
-      
-      const btn = document.getElementById('btn-submit');
-      btn.innerText = '기록 저장 중... ⏳';
-      btn.disabled = true;
-
-      if (GOOGLE_SCRIPT_URL) {
-        try {
-          await fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: playerName, score: score, time: time })
-          });
-          alert("점수가 등록되었습니다!");
-        } catch (err) {
-          console.error("점수 등록 실패", err);
-        }
+      if (card1.id === card2.id) {
+        // 정답! 반응속도를 500ms에서 250ms로 단축
+        setTimeout(() => {
+          setCards(prev => prev.map((c, i) => 
+            newFlippedIndices.includes(i) ? { ...c, isMatched: true } : c
+          ));
+          setFlippedIndices([]);
+          setMatchedPairs(prev => prev + 1);
+          
+          // 점수 계산 (기본 10점, 보너스 30점)
+          const points = card1.isBonus ? 30 : 10;
+          setScore(prev => prev + points);
+        }, 250);
       } else {
-        // 로컬 테스트용
-        let currentRank = JSON.parse(localStorage.getItem('mz_periodic_leaderboard') || '[]');
-        currentRank.push({ name: playerName, score: score, time: time });
-        currentRank.sort((a, b) => b.score - a.score || a.time - b.time);
-        localStorage.setItem('mz_periodic_leaderboard', JSON.stringify(currentRank.slice(0, 10)));
+        // 오답! 반응속도를 800ms에서 400ms로 단축
+        setTimeout(() => {
+          setCards(prev => prev.map((c, i) => 
+            newFlippedIndices.includes(i) ? { ...c, isFlipped: false } : c
+          ));
+          setFlippedIndices([]);
+          setScore(prev => Math.max(0, prev - 2)); // 오답 패널티 2점 감점
+        }, 400);
       }
-      
-      fetchLeaderboard();
     }
+  };
 
-    // 랭킹 불러오기
-    async function fetchLeaderboard() {
-      showScreen('leaderboard');
-      let data = [];
-
-      if (GOOGLE_SCRIPT_URL) {
-        document.getElementById('local-warning').classList.add('hidden');
-        try {
-          const res = await fetch(GOOGLE_SCRIPT_URL);
-          data = await res.json();
-        } catch (err) {
-          console.error("랭킹 불러오기 실패", err);
-        }
-      } else {
-        document.getElementById('local-warning').classList.remove('hidden');
-        data = JSON.parse(localStorage.getItem('mz_periodic_leaderboard') || '[]');
-      }
-
-      renderLeaderboard(data);
+  // 게임 종료 체크
+  useEffect(() => {
+    // 8쌍(16장)을 다 맞추면 종료되도록 변경
+    if (matchedPairs === 8 && gameState === 'playing') {
+      const timeBonus = Math.max(0, 100 - time); 
+      setScore(prev => prev + timeBonus);
+      setGameState('gameover');
     }
+  }, [matchedPairs, gameState, time]);
 
-    // 랭킹 화면 그리기
-    function renderLeaderboard(data) {
-      const list = document.getElementById('leaderboard-list');
-      const empty = document.getElementById('leaderboard-empty');
+  // 구글 시트에 랭킹 저장
+  const submitScore = async () => {
+    if (!playerName.trim()) return alert("이름을 입력해주세요!");
+    setIsSubmitting(true);
 
-      if (data.length === 0) {
-        list.classList.add('hidden');
-        empty.classList.remove('hidden');
-      } else {
-        list.classList.remove('hidden');
-        empty.classList.add('hidden');
-        list.innerHTML = '';
-
-        data.forEach((entry, idx) => {
-          let rankColor = "text-white/40";
-          if (idx === 0) rankColor = "text-yellow-400 scale-125";
-          else if (idx === 1) rankColor = "text-slate-300 scale-110";
-          else if (idx === 2) rankColor = "text-amber-600 scale-105";
-
-          const li = `
-            <li class="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
-              <div class="flex items-center gap-4">
-                <span class="text-xl font-black w-6 text-center drop-shadow-md ${rankColor}">${idx + 1}</span>
-                <span class="font-bold text-lg text-white/90">${entry.name}</span>
-              </div>
-              <div class="flex flex-col items-end">
-                <span class="font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.4)]">${entry.score}점</span>
-                <span class="text-xs text-white/50 font-medium">${entry.time}초</span>
-              </div>
-            </li>
-          `;
-          list.insertAdjacentHTML('beforeend', li);
+    if (GOOGLE_SCRIPT_URL) {
+      try {
+        await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: playerName, score: score, time: time })
         });
+        alert("점수가 등록되었습니다!");
+      } catch (err) {
+        console.error("점수 등록 실패", err);
       }
+    } else {
+      const currentRank = JSON.parse(localStorage.getItem('localLeaderboard') || '[]');
+      currentRank.push({ name: playerName, score: score, time: time, date: new Date().toLocaleDateString() });
+      currentRank.sort((a, b) => b.score - a.score || a.time - b.time); 
+      localStorage.setItem('localLeaderboard', JSON.stringify(currentRank.slice(0, 10)));
     }
+    
+    setIsSubmitting(false);
+    fetchLeaderboard();
+  };
 
-    // 시작 시 반짝이 생성
-    window.onload = createSparkles;
-  </script>
-</body>
-</html>
+  // 랭킹 불러오기
+  const fetchLeaderboard = async () => {
+    setGameState('leaderboard');
+    if (GOOGLE_SCRIPT_URL) {
+      try {
+        const res = await fetch(GOOGLE_SCRIPT_URL);
+        const data = await res.json();
+        setLeaderboard(data);
+      } catch (err) {
+        console.error("랭킹 불러오기 실패", err);
+      }
+    } else {
+      setLeaderboard(JSON.parse(localStorage.getItem('localLeaderboard') || '[]'));
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white font-sans flex flex-col items-center justify-center p-2 sm:p-4 relative overflow-hidden">
+      <Sparkles />
+      
+      <div className="z-10 w-full max-w-2xl flex flex-col items-center justify-center">
+        {/* ===== 메인 메뉴 ===== */}
+        {gameState === 'menu' && (
+          <div className="max-w-md w-full backdrop-blur-xl bg-white/10 p-6 sm:p-8 rounded-3xl shadow-[0_0_40px_rgba(120,0,255,0.3)] border border-white/20 text-center transform transition-all">
+            <h1 className="text-4xl sm:text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 drop-shadow-lg leading-tight mt-2">
+              주기율표<br/>짝맞추기
+            </h1>
+            <div className="mb-8 flex flex-col items-center gap-3">
+              <p className="text-white font-bold text-base sm:text-lg bg-black/30 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl">
+                ✨ 우신고 주기율표 King은? ✨
+              </p>
+              <p className="text-white/60 text-xs font-medium tracking-wide bg-black/20 px-3 py-1 rounded-full">
+                🛠️ 오류제보: 이상준선생님
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <button 
+                onClick={initGame}
+                className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.5)] flex items-center justify-center gap-2"
+              >
+                <Play size={24} fill="currentColor" /> 게임 시작!
+              </button>
+              <button 
+                onClick={fetchLeaderboard}
+                className="w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-lg transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2"
+              >
+                <Trophy size={24} className="text-yellow-400" /> 명예의 전당
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 게임 화면 ===== */}
+        {gameState === 'playing' && (
+          <div className="w-full">
+            <div className="flex justify-between items-center mb-4 sm:mb-6 backdrop-blur-xl bg-white/10 p-3 sm:p-4 rounded-2xl border border-white/20 shadow-xl">
+              {isPreviewing ? (
+                <div className="w-full text-center text-pink-400 font-black text-lg sm:text-xl animate-pulse">
+                  👀 카드의 위치를 기억하세요! (3초)
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-4 sm:gap-6">
+                    <div className="flex flex-col bg-black/20 px-4 py-1.5 rounded-xl border border-white/5">
+                      <span className="text-[10px] sm:text-xs text-cyan-300 font-bold uppercase tracking-wider">Score</span>
+                      <span className="text-xl sm:text-2xl font-black text-white drop-shadow-md">{score}점</span>
+                    </div>
+                    <div className="flex flex-col bg-black/20 px-4 py-1.5 rounded-xl border border-white/5">
+                      <span className="text-[10px] sm:text-xs text-pink-300 font-bold uppercase tracking-wider">Time</span>
+                      <span className="text-xl sm:text-2xl font-black text-white drop-shadow-md">{time}초</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setGameState('menu')}
+                    className="px-4 py-2 bg-pink-500/20 hover:bg-pink-500/40 text-pink-200 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 border border-pink-500/30 transition-all active:scale-95"
+                  >
+                    포기하기 😢
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* 카드 그리드: 4x4에 최적화 */}
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {cards.map((card, idx) => (
+                <div 
+                  key={idx}
+                  onClick={() => handleCardClick(idx)}
+                  className="relative w-full aspect-[3/4] cursor-pointer group perspective-1000"
+                >
+                  {/* 카드 회전 속도를 duration-500에서 duration-300으로 단축 */}
+                  <div className={`w-full h-full duration-300 [transform-style:preserve-3d] ${card.isFlipped || card.isMatched ? '[transform:rotateY(180deg)]' : ''}`}>
+                    <div className="absolute inset-0 backface-hidden [backface-visibility:hidden] backdrop-blur-md bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center group-hover:border-cyan-400 transition-all shadow-lg overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <span className="text-3xl sm:text-5xl text-white/30 font-black drop-shadow-md">?</span>
+                    </div>
+                    
+                    <div className={`absolute inset-0 backface-hidden [backface-visibility:hidden] [transform:rotateY(180deg)] rounded-2xl flex flex-col items-center justify-center border-2 shadow-2xl transition-all
+                      ${card.isMatched ? 'opacity-40 scale-95 border-emerald-500/30 bg-emerald-900/20' : 'opacity-100 scale-100'}
+                      ${card.isBonus && !card.isMatched ? 'bg-gradient-to-br from-amber-400 to-pink-500 border-yellow-300 shadow-[0_0_15px_rgba(251,191,36,0.5)]' : !card.isMatched ? 'bg-gradient-to-br from-cyan-500 to-blue-600 border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : ''}
+                    `}>
+                      {card.isBonus && !card.isMatched && (
+                        <Zap className="absolute top-1 right-1 sm:top-2 sm:right-2 text-yellow-100 w-4 h-4 sm:w-5 sm:h-5 drop-shadow-md animate-pulse" fill="currentColor" />
+                      )}
+                      <span className={`font-black text-center px-1 break-keep text-white drop-shadow-md ${card.type === 'symbol' ? 'text-3xl sm:text-4xl md:text-5xl' : 'text-sm sm:text-lg md:text-xl'}`}>
+                        {card.content}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ===== 게임 종료 화면 ===== */}
+        {gameState === 'gameover' && (
+          <div className="max-w-md w-full backdrop-blur-xl bg-white/10 p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center border border-white/20 transform transition-all">
+            <Medal className="w-24 h-24 text-yellow-400 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]" />
+            <h2 className="text-4xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Game Clear!</h2>
+            <p className="text-white/70 mb-6 font-medium">모든 원소를 완벽하게 맞췄어요! 🎉</p>
+            
+            <div className="bg-black/30 p-6 rounded-2xl mb-6 border border-white/10 shadow-inner">
+              <div className="text-sm text-cyan-300 font-bold mb-1">최종 스코어</div>
+              <div className="text-6xl font-black text-white mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">{score}<span className="text-2xl text-emerald-400 ml-1">pt</span></div>
+              <div className="inline-block bg-white/10 px-3 py-1 rounded-full text-sm text-white/80 font-medium">걸린 시간: {time}초</div>
+            </div>
+
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                placeholder="😎 닉네임을 입력하세요" 
+                className="w-full p-4 bg-black/40 border border-white/20 rounded-2xl text-center text-lg font-bold text-white placeholder-white/40 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                maxLength={10}
+              />
+              <button 
+                onClick={submitScore}
+                disabled={isSubmitting}
+                className="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:from-slate-600 disabled:to-slate-700 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? '기록 저장 중... ⏳' : '랭킹에 점수 등록하기 🚀'}
+              </button>
+              <button 
+                onClick={() => setGameState('menu')}
+                className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-bold transition-all active:scale-95 border border-white/10 text-white/80"
+              >
+                메인으로 돌아가기
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 리더보드 (랭킹) ===== */}
+        {gameState === 'leaderboard' && (
+          <div className="max-w-md w-full backdrop-blur-xl bg-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_rgba(250,204,21,0.2)] border border-white/20 transform transition-all">
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <Trophy className="text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]" size={36} />
+              <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-500">명예의 전당</h2>
+            </div>
+
+            <div className="bg-black/30 rounded-2xl overflow-hidden mb-8 min-h-[300px] border border-white/10 shadow-inner">
+              {leaderboard.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-white/50 p-8 text-center gap-2">
+                  <div className="text-4xl mb-2">🏆</div>
+                  <p className="font-bold text-white/70">아직 기록이 없어요.</p>
+                  <p className="text-sm">우신고 1등의 주인공이 되어보세요!</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-white/5">
+                  {leaderboard.map((entry, idx) => (
+                    <li key={idx} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <span className={`text-xl font-black w-6 text-center drop-shadow-md
+                          ${idx === 0 ? 'text-yellow-400 scale-125' : idx === 1 ? 'text-slate-300 scale-110' : idx === 2 ? 'text-amber-600 scale-105' : 'text-white/40'}
+                        `}>
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-lg text-white/90">{entry.name}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.4)]">{entry.score}점</span>
+                        <span className="text-xs text-white/50 font-medium">{entry.time}초</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              
+              {!GOOGLE_SCRIPT_URL && (
+                <div className="p-3 bg-pink-500/20 text-pink-200 text-xs text-center border-t border-pink-500/30 font-medium">
+                  ⚠️ 현재 임시(로컬) 랭킹 모드입니다.
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setGameState('menu')}
+              className="w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-lg transition-all active:scale-95 border border-white/10 flex items-center justify-center gap-2"
+            >
+              <RotateCcw size={20} /> 메인으로
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
