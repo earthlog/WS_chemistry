@@ -384,15 +384,35 @@
     // 랭킹 불러오기
     async function fetchLeaderboard() {
       showScreen('leaderboard');
+      
+      const list = document.getElementById('leaderboard-list');
+      const empty = document.getElementById('leaderboard-empty');
+      
+      // 1. 로딩 애니메이션 표시
+      empty.classList.remove('hidden');
+      empty.innerHTML = `<div class="text-4xl mb-2 animate-spin">⏳</div><p class="font-bold text-white/70">랭킹을 불러오는 중...</p>`;
+      list.classList.add('hidden');
+
       let data = [];
 
       if (GOOGLE_SCRIPT_URL) {
         document.getElementById('local-warning').classList.add('hidden');
         try {
           const res = await fetch(GOOGLE_SCRIPT_URL);
-          data = await res.json();
+          const text = await res.text(); // 텍스트로 먼저 받아오기
+          
+          try {
+            data = JSON.parse(text); // JSON 변환 시도
+          } catch (e) {
+            // 2. 구글 시트 에러 시 화면에 표시
+            console.error("JSON 파싱 에러:", text);
+            empty.innerHTML = `<div class="text-4xl mb-2">🚨</div><p class="font-bold text-pink-400">구글 시트 연결 오류!</p><p class="text-xs text-white/50 mt-2">1. 시트 탭 이름이 '시트1'인지 확인<br>2. 구글 시트 웹앱 권한이 '모든 사용자'인지 확인</p>`;
+            return;
+          }
         } catch (err) {
           console.error("랭킹 불러오기 실패", err);
+          empty.innerHTML = `<div class="text-4xl mb-2">🔌</div><p class="font-bold text-white/70">서버 연결에 실패했습니다.</p>`;
+          return;
         }
       }
 
@@ -407,6 +427,12 @@
       if (!data || data.length === 0) {
         list.classList.add('hidden');
         empty.classList.remove('hidden');
+        // 3. 데이터가 없을 때 원래 화면으로 복구
+        empty.innerHTML = `
+          <div class="text-4xl mb-2">🤔</div>
+          <p class="font-bold text-white/70">아직 기록이 없어요.</p>
+          <p class="text-sm">우신고 1등의 주인공이 되어보세요!</p>
+        `;
       } else {
         list.classList.remove('hidden');
         empty.classList.add('hidden');
